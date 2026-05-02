@@ -1,11 +1,13 @@
 # Cross-platform launcher for the SDM Shiny app.
 # This is friendlier than running app.R directly because it opens the browser.
 
+# Ensure relative paths work even if Rscript is called from another folder.
 cmd_args <- commandArgs(FALSE)
 file_arg <- grep("^--file=", cmd_args, value = TRUE)
-launcher_path <- if (length(file_arg) > 0) normalizePath(sub("^--file=", "", file_arg[1]), winslash = "/", mustWork = TRUE) else normalizePath("launch_app.R", winslash = "/", mustWork = FALSE)
-source(file.path(dirname(launcher_path), "R", "bootstrap.R"))
-sdm_set_project_root(dirname(launcher_path))
+if (length(file_arg) > 0) {
+  launcher_path <- normalizePath(sub("^--file=", "", file_arg[1]), winslash = "/", mustWork = TRUE)
+  setwd(dirname(launcher_path))
+}
 
 if (!file.exists("app.R")) {
   stop("app.R was not found. Run this launcher from the extracted SDM project folder.")
@@ -19,16 +21,9 @@ host <- Sys.getenv("HOST", "127.0.0.1")
 message("Starting SDM Web Interface...")
 message("If the browser does not open, go to: http://127.0.0.1:", port)
 
-open_browser <- function(url) {
-  tryCatch(utils::browseURL(url), error = function(e) {
-    message("Could not open a browser automatically: ", conditionMessage(e))
-    message("Open this URL manually: ", url)
-  })
-}
-
 shiny::runApp(
   shiny::shinyApp(ui, server),
   host = host,
   port = port,
-  launch.browser = open_browser
+  launch.browser = function(url) utils::browseURL(url)
 )

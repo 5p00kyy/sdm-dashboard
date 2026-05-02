@@ -1,132 +1,149 @@
-# SDM Dashboard Workbench
+# SDM Web Interface
 
-SDM Dashboard Workbench is a local R/Shiny application for species distribution modelling from presence-only occurrence records. It combines occurrence cleaning, selected WorldClim BIO layers, optional elevation and soil covariates, GLM-based modelling, map export, and a compact text report in one desktop-friendly workflow.
+Local R/Shiny app for fast species distribution modelling from presence-only occurrence records. The model uses selected WorldClim BIO layers and can optionally add OpenTopography elevation and HWSD v2 soil covariates.
 
-This is a beta release. Interfaces, defaults, packaging, and outputs may change before a stable `v1.0.0` release. Validate model outputs carefully before operational use.
+## What Is Included
 
-The public repository contains source code, documentation, scripts, templates, and small synthetic examples only. Real occurrence data, downloaded rasters, generated outputs, API keys, screenshots, and release archives should stay local.
+- `app.R`: Shiny web interface.
+- `R/optimized_sdm.R`: compatibility loader for the refactored engine.
+- `R/*.R`: focused modules for packages, occurrence cleaning, covariates, modelling, plotting, reporting, and app helpers.
+- `pipeline.R`: command-line runner if `presence_data.csv` is available.
+- `launch_app.R`: cross-platform launcher.
+- `run_app_windows.bat`: one-click Windows setup and app runner.
+- `scripts/download_worldclim.R`: helper to recreate local WorldClim layers.
+- `scripts/smoke_test.R`: lightweight source test.
+- `data/presence_data_template.csv`: required occurrence CSV template.
 
-## Features
+## What Is NOT Included (Download Separately)
 
-- Shiny dashboard for occurrence CSV/TSV uploads or a bundled synthetic example dataset.
-- Presence/background SDM workflow with configurable extent, threshold, cross-validation folds, and CPU use.
-- WorldClim BIO climate layers with optional local download/cache.
-- Optional OpenTopography elevation and local HWSD v2 soil covariates.
-- Exportable suitability GeoTIFF, PNG preview, cleaned occurrence table, and summary report.
-- Windows one-click runner, command-line pipeline, Docker scaffold, and lightweight checks for maintainers.
+- **Australia Boundary shapefiles**: Download from [AAS](https://data.gov.au/data/dataset/australian-border-areas) and place in `Australia Boundary/` folder.
+- **WorldClim rasters**: App can download automatically, or use `scripts/download_worldclim.R`.
+- **Elevation data**: Cached under `covariates/opentopo/` (requires OpenTopography API key).
+- **Soil data**: Place HWSD v2 GeoTIFF at `covariates/hwsd_v2/`.
+- **`presence_data.csv`**: Your own occurrence data (keep local, never commit).
 
-## Which Download
+## Input Data
 
-Most users should use the latest GitHub Release rather than cloning the repository.
+Occurrence data must include longitude and latitude columns. Accepted names include:
 
-- Windows users: download `sdm-dashboard-vX.Y.Z-windows-ready.zip` or `sdm-dashboard-vX.Y.Z-beta-windows-ready.zip` from Releases, extract it, then double-click `run_app_windows.bat`.
-- Developers and Linux/macOS users: clone the repository or download `sdm-dashboard-vX.Y.Z-source.zip`.
-- The source zip excludes generated outputs, private data, downloaded rasters, and caches.
-- The Windows-ready zip may be larger because it can include the default WorldClim BIO layers for faster first launch.
+- longitude: `longitude`, `lon`, `decimalLongitude`, or `x`
+- latitude: `latitude`, `lat`, `decimalLatitude`, or `y`
+- optional source: `source`, `institutionCode`, `provider`, or similar
 
-First public beta release:
+Put `presence_data.csv` in the project folder for the CLI pipeline, or upload a CSV/TSV in the web app.
 
-- Repository: `https://github.com/5p00kyy/sdm-dashboard`
-- Release tag: `v0.1.0-beta`
-- Windows asset: `sdm-dashboard-v0.1.0-beta-windows-ready.zip`
-- Source asset: `sdm-dashboard-v0.1.0-beta-source.zip`
+## Environmental Covariates
 
-## Local Run
+### WorldClim
 
-Install R 4.3+ and system libraries required by `terra`/GDAL on your platform, then run from the project root:
+The app can download missing WorldClim BIO layers when **Download missing WorldClim/elevation layers** is checked.
 
-```bash
-Rscript install_packages.R
-Rscript app.R
-```
-
-Open the printed local URL, usually `http://127.0.0.1:3838`. To launch with browser-opening behavior, use:
+You can also run:
 
 ```bash
-Rscript launch_app.R
+Rscript scripts/download_worldclim.R 10
 ```
 
-Run the non-interactive pipeline with:
+### Elevation
 
-```bash
-Rscript pipeline.R
+Elevation uses the OpenTopography Global DEM API and is cached under `covariates/opentopo/`.
+
+Provide an API key in either place:
+
+- Set environment variable `OPENTOPOGRAPHY_API_KEY`.
+- Enter the key in the app field when elevation is enabled.
+
+The key is not written to reports, outputs, or cache metadata.
+
+### Soil
+
+Soil uses a local/cached HWSD v2 GeoTIFF. The recommended source is the HWSD v2 Earth Engine asset:
+
+```text
+projects/sat-io/open-datasets/FAO/HWSD_V2_SMU
 ```
 
-The pipeline uses `presence_data.csv` in the project root when present, otherwise it falls back to `data/examples/synthetic_presence_data.csv`.
+Export the selected HWSD bands to a GeoTIFF and place it at:
 
-## Windows Run
+```text
+covariates/hwsd_v2/HWSD_V2_SMU_selected.tif
+```
 
-On Windows, extract the Windows-ready zip and double-click:
+Supported bands include `TEXTURE_USDA`, `REF_BULK_DENSITY`, `BULK_DENSITY`, `DRAINAGE`, `ROOT_DEPTH`, `AWC`, and `ROOTS`.
+
+### Microclimate (MODIS)
+
+The app can include MODIS microclimate data (Land Surface Temperature and Vegetation Indices) via the ORNL MODIS web service - no login required.
+
+**Data Source**: MODISTools R package (ORNL web service)
+
+**Variables**:
+- LST Day (annual mean from MOD11A2)
+- LST Night (annual mean from MYD11A2)
+- LST Amplitude (Day - Night)
+- NDVI (annual mean from MOD13Q1)
+
+**Cache location**: `covariates/microclimate/`
+
+Enable in the app with "Add MODIS microclimate (LST, NDVI)" checkbox.
+
+### Ensemble Modeling
+
+The ensemble model combines multiple algorithms for improved predictions:
+
+- **GLM**: Logistic regression (fast, interpretable)
+- **Ranger**: Random Forest (handles non-linear relationships)
+- **GAM**: Generalized Additive Model (smoothed relationships)
+- **Rangebag**: Range-bagging (convex hull envelopes)
+
+Select models via checkboxes in the app. Default ensemble uses GLM + Ranger + Rangebag.
+
+**Uncertainty Metrics**: When ensemble is used, the app outputs:
+- Standard deviation across models
+- Coefficient of variation
+- 95% confidence intervals (lower/upper)
+- Model agreement (% of models predicting above threshold)
+
+Output files include `_ensemble_sd.tif`, `_ensemble_cv.tif`, `_ensemble_ci_lo.tif`, `_ensemble_ci_hi.tif`, and `_ensemble_agreement.tif`.
+
+## Run The App
+
+### Windows
+
+Double-click:
 
 ```text
 run_app_windows.bat
 ```
 
-The helper locates R, installs missing packages, checks default WorldClim layers, and starts the app. See `README_WINDOWS.md` for additional Windows notes.
+This single runner finds R, installs missing packages, checks default WorldClim layers, and launches the app.
 
-## Data Inputs
-
-Occurrence data must include longitude and latitude columns. Accepted names include:
-
-- Longitude: `longitude`, `lon`, `decimalLongitude`, or `x`
-- Latitude: `latitude`, `lat`, `decimalLatitude`, or `y`
-- Optional source/provider: `source`, `institutionCode`, `provider`, or similar
-
-Use `data/presence_data_template.csv` as the input template. Use `data/examples/synthetic_presence_data.csv` for first-run testing only; it is artificial and must not be interpreted as real occurrence evidence.
-
-## Covariates
-
-- WorldClim: selected BIO layers are downloaded/cached under `Worldclim/` when requested. Cite and use WorldClim according to its terms before redistributing rasters or derived products.
-- Elevation: optional OpenTopography Global DEM access. Set `OPENTOPOGRAPHY_API_KEY` or enter a key in the app. Keys are not saved by the app and should never be committed.
-- Soil: optional HWSD v2 GeoTIFF at `covariates/hwsd_v2/HWSD_V2_SMU_selected.tif`. Check HWSD licensing and citation requirements before redistributing derived files.
-
-Generated working folders such as `outputs/`, `checkpoints/`, `logs/`, `Worldclim/`, and `covariates/` can contain large files or sensitive project data and are ignored by git.
-
-## Docker
-
-Build and run locally with Docker:
+### macOS/Linux/RStudio Terminal
 
 ```bash
-docker build -t sdm-dashboard .
-docker run --rm -p 3838:3838 sdm-dashboard
+Rscript launch_app.R
 ```
 
-Or use Compose:
+Open the printed URL, usually:
+
+```text
+http://127.0.0.1:3838
+```
+
+## Command-Line Pipeline
 
 ```bash
-docker compose up --build
+Rscript pipeline.R
 ```
 
-Mount local working data only when needed, for example with bind mounts for `Worldclim/`, `covariates/`, or `outputs/`. Do not bake private data or API keys into images. Hosted deployments need a Shiny-capable runtime such as Shiny Server, Posit Connect, shinyapps.io, or a container platform that can run the Shiny process.
-
-## Interpretation Caveats
-
-Outputs are habitat suitability or relative occurrence-support maps, not confirmed presence/absence maps. Results depend on occurrence quality, sampling bias, spatial extent, background sampling, covariate choice/resolution, model assumptions, and projection domain. Treat outputs as screening or decision-support products that require ecological review and independent validation before operational use.
-
-## Privacy
-
-- Do not commit real occurrence datasets unless they are explicitly public and redistribution is allowed.
-- Do not commit API keys, `.Renviron`, `.env`, downloaded rasters, generated model outputs, logs, screenshots with sensitive information, or release zip files.
-- Keep templates and synthetic examples in `data/`; keep local working data at the project root or ignored cache/output folders.
-- Review generated reports and screenshots before sharing because coordinates, paths, and species names can be sensitive.
+The CLI runner uses `presence_data.csv` from the project root and default settings.
 
 ## Verification
 
-Run the lightweight source checks:
+Run a lightweight source test:
 
 ```bash
 Rscript scripts/smoke_test.R
-Rscript tests/testthat.R
-Rscript scripts/audit_release.R
 ```
 
-Build release assets with explicit versions:
-
-```bash
-Rscript scripts/make_release_zip.R source --version=v0.1.0-beta
-Rscript scripts/make_release_zip.R ready --version=v0.1.0-beta
-```
-
-## Contributing And Citation
-
-See `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, and `CITATION.cff` for contribution, conduct, security/privacy, and citation guidance. The project is licensed under the MIT License.
+This checks that the refactored modules load and key public functions exist. It does not require real occurrence data or rasters.

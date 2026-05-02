@@ -1,32 +1,21 @@
 #!/usr/bin/env Rscript
-# Command-line pipeline for the SDM Dashboard Workbench.
+# Optimized command-line pipeline for the recovered SDM project.
 
 cmd_args <- commandArgs(FALSE)
 file_arg <- grep("^--file=", cmd_args, value = TRUE)
-pipeline_path <- if (length(file_arg) > 0) normalizePath(sub("^--file=", "", file_arg[1]), winslash = "/", mustWork = TRUE) else normalizePath("pipeline.R", winslash = "/", mustWork = FALSE)
-source(file.path(dirname(pipeline_path), "R", "bootstrap.R"))
-sdm_set_project_root(dirname(pipeline_path))
+if (length(file_arg) > 0) {
+  pipeline_path <- normalizePath(sub("^--file=", "", file_arg[1]), winslash = "/", mustWork = TRUE)
+  setwd(dirname(pipeline_path))
+}
 
 source("R/optimized_sdm.R")
+source("R/load.R")
 
-n_cores <- normalize_core_count(NULL, reserve_one = TRUE)
+n_cores <- max(1L, detect_available_cores(TRUE) - 1L)
 
-occ_file <- if (file.exists(sdm_default_occurrence_file)) {
-  sdm_default_occurrence_file
-} else if (file.exists(sdm_demo_occurrence_file)) {
-  sdm_demo_occurrence_file
-} else {
-  NA_character_
-}
+occ_file <- if (file.exists("presence_data.csv")) "presence_data.csv" else NA_character_
 if (is.na(occ_file)) {
-  stop("No occurrence file was found. Restore presence_data.csv or data/examples/synthetic_presence_data.csv.", call. = FALSE)
-}
-
-projection_extent <- sdm_default_projection_extent
-if (identical(sdm_default_extent_preset, "occurrence")) {
-  preview <- clean_occurrence_preview(occ_file)
-  if (!is.null(preview$error)) stop("Could not derive occurrence extent: ", preview$error, call. = FALSE)
-  projection_extent <- make_training_extent(preview$occ, buffer = 1)
+  stop("presence_data.csv was not found. Restore it or run the Shiny app and upload a CSV.", call. = FALSE)
 }
 
 cat("═══════════════════════════════════════════════════════════════\n")
@@ -34,25 +23,24 @@ cat("  Optimized SDM Pipeline\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 result <- run_fast_sdm(
-  species = default_species_label(occ_file),
+  species = "Piper aduncum",
   occurrence_file = occ_file,
-  worldclim_dir = sdm_default_worldclim_dir,
-  selected_biovars = sdm_default_biovars,
-  projection_extent = projection_extent,
-  background_n = sdm_default_background_n,
-  min_source_records = sdm_default_min_source_records,
+  worldclim_dir = "Worldclim",
+  selected_biovars = c(1, 4, 6, 12, 15, 18),
+  projection_extent = c(112, 155, -45, -10),
+  background_n = 10000,
+  min_source_records = 15,
   merge_small_sources = TRUE,
-  thin_by_cell = TRUE,
+  thinning_method = "cell",
   include_quadratic = TRUE,
-  threshold = sdm_default_threshold,
-  aggregation_factor = sdm_default_aggregation_factor,
-  cv_folds = sdm_default_cv_folds,
+  threshold = 0.5,
+  aggregation_factor = 1,
+  cv_folds = 3,
   n_cores = n_cores,
   allow_download = TRUE,
-  worldclim_res = sdm_default_worldclim_res,
-  output_dir = sdm_default_output_dir,
-  seed = sdm_default_seed,
-  occurrence_source = paste("Command-line observation records:", occ_file)
+  worldclim_res = 10,
+  output_dir = "outputs",
+  seed = 42
 )
 
 cat("\nRun complete.\n")
