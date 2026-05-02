@@ -164,3 +164,5 @@ Rscript scripts/make_release_zip.R ready --version=v0.2.0-beta
 ## Contributing And Citation
 
 See `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, and `CITATION.cff` for contribution, conduct, security/privacy, and citation guidance. The project is licensed under the MIT License.
+
+**Note:** This fork excludes large output assets and data; they are ignored via `.gitignore` to keep the repository lightweight.
